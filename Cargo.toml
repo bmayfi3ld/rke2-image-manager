@@ -1,0 +1,22 @@
+[package]
+name = "rke2-image-manager"
+version = "0.1.0"
+edition = "2021"
+description = "TUI for managing custom container images across RKE2 cluster nodes"
+
+[lib]
+name = "rke2_image_manager"
+path = "src/lib.rs"
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+tokio = { version = "1.43", features = ["full"] }
+nucleo = "0.5"
+anyhow = "1"
+base64 = "0.22"
+
+[dev-dependencies]
+tempfile = "3"
