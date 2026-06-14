@@ -29,3 +29,7 @@ fmt:
 # Run tests
 test:
     cargo test
+
+# Install the binary to ~/.cargo/bin
+install:
+    cargo install --path .
