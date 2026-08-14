@@ -357,3 +357,30 @@ pub async fn remove_tarball(
 pub fn tarball_filename(image_name: &str, version: &str) -> String {
     format!("{}-{}.tar", image_name, version)
 }
+
+/// Build the literal `ssh ... sudo -n rm <path>` command line that
+/// `remove_tarball` would run, for `--dry-run` previews.
+pub fn preview_remove_command(server: &Server, tarball: &str, remote_dir: &str) -> String {
+    let mut parts = vec![
+        "ssh".to_string(),
+        "-o".to_string(),
+        "BatchMode=yes".to_string(),
+        "-o".to_string(),
+        "ConnectTimeout=15".to_string(),
+    ];
+    if server.port != 22 {
+        parts.push("-p".to_string());
+        parts.push(server.port.to_string());
+    }
+    if let Some(ref identity) = server.identity_file {
+        parts.push("-i".to_string());
+        parts.push(identity.clone());
+    }
+    parts.push(format!("{}@{}", server.user, server.host));
+    parts.push("--".to_string());
+    parts.push("sudo".to_string());
+    parts.push("-n".to_string());
+    parts.push("rm".to_string());
+    parts.push(format!("{}/{}", remote_dir, tarball));
+    parts.join(" ")
+}

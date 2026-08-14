@@ -4,4 +4,7 @@ pub mod models;
 pub mod remote;
 pub mod build;
 pub mod app;
+pub mod cli;
+pub mod inventory;
+pub mod tui;
 pub mod ui;

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::dockerfile::discover_image_families;
+use crate::inventory;
 use crate::models::{Config, ImageFamily, ImageTableRow, ScanStatus, UnknownTarball};
 use crate::remote::{self, tarball_filename, RemoteEvent};
 use crate::ui::action_popup::{Action, Popup, PopupEntry};
@@ -154,7 +155,7 @@ impl App {
         );
 
         let unknowns: Vec<UnknownTarball> = Vec::new();
-        let rows = build_rows(&families, &unknowns);
+        let rows = inventory::rows_from(&families, &unknowns);
         let searcher = Searcher::new(&rows_to_info(&rows));
 
         let initial_status = if warnings.is_empty() {
@@ -240,7 +241,7 @@ impl App {
     }
 
     pub fn rebuild_rows(&mut self) {
-        self.rows = build_rows(&self.families, &self.unknowns);
+        self.rows = inventory::rows_from(&self.families, &self.unknowns);
         self.searcher.update_items(&rows_to_info(&self.rows));
     }
 
@@ -917,39 +918,6 @@ impl App {
         self.filtered_indices = self.searcher.visible_indices.clone();
         self.selected_row = 0;
     }
-}
-
-fn build_rows(
-    families: &BTreeMap<String, ImageFamily>,
-    unknowns: &[UnknownTarball],
-) -> Vec<ImageTableRow> {
-    let mut rows = Vec::new();
-
-    for family in families.values() {
-        if let Some(ref current) = family.current {
-            rows.push(ImageTableRow::Current(current.clone()));
-        }
-        for version in &family.stale_versions {
-            let servers = family
-                .remote_presence
-                .get(version)
-                .cloned()
-                .unwrap_or_default();
-            rows.push(ImageTableRow::Stale {
-                family_name: family.name.clone(),
-                version: version.clone(),
-                servers,
-            });
-        }
-    }
-
-    for unknown in unknowns {
-        if !unknown.servers.is_empty() {
-            rows.push(ImageTableRow::Unknown(unknown.clone()));
-        }
-    }
-
-    rows
 }
 
 fn rows_to_info(rows: &[ImageTableRow]) -> Vec<RowInfo> {

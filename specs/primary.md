@@ -20,13 +20,27 @@ rke2-image-manager/
 ├── justfile
 ├── Cargo.toml
 ├── src/
-│   ├── main.rs
+│   ├── main.rs             (thin dispatch: tui vs cli)
+│   ├── tui.rs               (interactive TUI bootstrap + event loop)
 │   ├── app.rs
 │   ├── config.rs
 │   ├── dockerfile.rs
 │   ├── build.rs
 │   ├── remote.rs
 │   ├── models.rs
+│   ├── inventory.rs         (shared discover+scan+rows, used by tui and cli)
+│   ├── cli/
+│   │   ├── mod.rs            (Cli/Command, clap definitions, dispatch)
+│   │   ├── output.rs         (table + JSON rendering, color handling)
+│   │   ├── select.rs         (ImageSelector parse/resolve, server resolution)
+│   │   └── commands/
+│   │       ├── list.rs
+│   │       ├── status.rs
+│   │       ├── servers.rs
+│   │       ├── build.rs
+│   │       ├── deploy.rs
+│   │       ├── remove.rs
+│   │       └── clean.rs
 │   └── ui/
 │       ├── mod.rs
 │       ├── image_table.rs
@@ -395,6 +409,63 @@ Version is extracted from the first line matching `^#\s*(v?[\d][^\s]*)`.
 | immich_transfer | `immich_transfer/immich_transfer.dockerfile` | `1.1.1` | `immich_transfer/` |
 | portal_knights_dedicated_server | `portal_knights_dedicated_server/Dockerfile` | `v1.0.0-1.0.0` | `portal_knights_dedicated_server/` |
 
+## CLI
+
+Alongside the TUI, the binary exposes a scriptable, non-interactive CLI built with `clap`
+(derive API). Dispatch rule: no subcommand (or `tui`) launches the TUI; any other subcommand
+runs non-interactively and exits.
+
+No subcommand ever prompts interactively -- each command performs its action and reports the
+result. `--dry-run` (on `deploy`/`remove`/`clean`) is the only opt-in safety valve.
+
+### Global options
+
+`-c/--config <PATH>` (override discovery), `--json` (machine-readable output), `-q/--quiet`
+(suppress progress/log chatter), `--no-color` (disable ANSI; also honors `NO_COLOR`).
+
+### Commands
+
+| Command | Purpose |
+|---|---|
+| `list [--no-scan] [--filter S] [--current] [--stale] [--unknown]` | Inventory table/JSON across all servers |
+| `status` | Per-server `ScanStatus` + aggregate counts |
+| `servers` | List configured servers without connecting |
+| `build <IMAGE>... \| --all [--dump-log]` | Sequential podman build + save, streamed to stdout |
+| `deploy <IMAGE>... \| --all [-s NAME]... [--build] [--missing-only] [--dry-run]` | SCP tarball(s) to servers |
+| `remove <IMAGE[:VERSION]>... [-s NAME]... [--dry-run]` | SSH `rm` of named tarballs from servers |
+| `clean [--stale] [--unknown] [-s NAME]... [--dry-run]` | Bulk sweep of stale/unknown tarballs from servers |
+| `__completions <SHELL>` | Hidden; emits shell completion script (used by `just completions`) |
+
+`build` and `deploy` only ever target a family's *current* version (the version comes from the
+Dockerfile, so there's no `:VERSION` form to build). `remove`/`clean` operate on `ImageSelector`
+values: `name` (current), `name:version` (a specific/stale version), or a bare `file.tar` filename
+(an unknown tarball) -- see `cli::select::ImageSelector`.
+
+Server selection for `deploy`/`remove`/`clean` defaults to every server in `config.toml`'s
+`[[servers]]` list (that list *is* the managed set); `-s/--server` (repeatable) narrows to a
+subset. An unknown `--server` name is a hard error listing the valid names -- never a silent
+no-op. `clean` requires at least one of `--stale`/`--unknown`; with no prompts anywhere, that's
+the one guard against a typo sweeping everything.
+
+### Shared core
+
+`src/inventory.rs` composes `dockerfile::discover_image_families`,
+`remote::refresh_local_tarballs`, and `remote::start_remote_scan` into a single
+`inventory::load(config, scan: bool) -> Inventory`, draining the scan channel to completion
+instead of polling it (the TUI's `App` keeps its own incremental/streaming scan for progressive
+redraws; `inventory::rows_from` is the shared row-ordering logic both call). CLI commands never
+touch `ratatui`/`crossterm` -- `src/tui.rs` owns the terminal, raw mode, and panic hook, and only
+runs on the `None`/`tui` dispatch path.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | All requested work succeeded |
+| 1 | Partial failure -- one or more per-target operations failed; every other target was still attempted |
+| 2 | Usage error (bad selector, unknown server/image name, missing required flag) |
+| 3 | Config not found / unparsable |
+
 ## Key Dependencies
 
 | Crate | Version | Purpose |
@@ -406,6 +477,9 @@ Version is extracted from the first line matching `^#\s*(v?[\d][^\s]*)`.
 | `tokio` | 1.43 (features: full) | Async runtime |
 | `nucleo` | 0.5 | Fuzzy matching for search |
 | `anyhow` | 1.0 | Error handling |
+| `clap` (with `derive` feature) | 4.x | CLI argument parsing |
+| `clap_complete` | 4.x | Shell completion generation (`__completions` subcommand) |
+| `serde_json` | 1.x | `--json` output |
 
 Build log dumps use `std::time::SystemTime` for timestamps (no `chrono` needed). `serde_derive` is not a separate dep -- the `derive` feature on `serde` re-exports the proc-macros.
 

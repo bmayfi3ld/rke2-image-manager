@@ -98,7 +98,7 @@ pub struct PathsConfig {
     pub image_registry: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ScanStatus {
     Pending,
     Ok,

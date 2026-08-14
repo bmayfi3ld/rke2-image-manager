@@ -33,3 +33,10 @@ test:
 # Install the binary to ~/.cargo/bin
 install:
     cargo install --path .
+
+# Generate shell completions (bash, zsh, fish) into ./completions
+completions:
+    mkdir -p completions
+    cargo run -- __completions bash > completions/rke2-image-manager.bash
+    cargo run -- __completions zsh > completions/_rke2-image-manager
+    cargo run -- __completions fish > completions/rke2-image-manager.fish
